@@ -1,6 +1,7 @@
 /* Part of dump740, a UVD protocol decoder for RTLSDR devices.
  *
  * Copyright (c) 2016 Alexandr Ivanov <alexandr.sky@gmail.com>
+ * Modified output view by v3tritium@yandex.ru
  *
  * This file is free software: you may copy, redistribute and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -20,6 +21,11 @@
 #include <stdlib.h>
 #include <math.h>
 
+//#include <sys/time.h>
+#include <sys/timeb.h>
+#include <time.h>
+//#include <timeb.h>
+
 
 #define MAX_MSG_SIZE	728 // (44 us header + 8*20*2 us data) * 2 (1 item = 0.5 us)
 #define MAG_TABLE_SIZE	65536
@@ -30,6 +36,9 @@ static const int timing_zk2[] = {22, 50, 66, 82, -1}; //us: 11 + 14 + 8 + 8
 static const int timing_zk3[] = {36, 56, 80, 88, -1}; //us: 18 + 10 + 12 + 4
 
 static uint16_t *mag_table = NULL;
+
+struct tm    stTime_receive, stTime_now;
+struct timeb epocTime_receive, epocTime_now;
 
 
 static inline int pulse(uint16_t *m, int i)
@@ -187,15 +196,26 @@ void print_message(FILE *f,
 	int fuel, altitude_type, altitude;
 	int speed, angle;
 
+// Find current system time
+ftime(&epocTime_now);                                         
+// get the current system time & date
+stTime_now = *localtime(&epocTime_now.time);
+
+// Print system current time and date
+fprintf(f, "%04d/%02d/%02d ", (stTime_now.tm_year+1900),(stTime_now.tm_mon+1), stTime_now.tm_mday);
+fprintf(f, "%02d:%02d:%02d.%03d ", stTime_now.tm_hour, stTime_now.tm_min, stTime_now.tm_sec, epocTime_now.millitm);
+
+
+
 #ifdef TEST
 	uint32_t message;
 	message = tmessage & 0xffffffff;
 	tmessage >>= 32;
 	tmessage += (uint64_t)block_n * (BLOCK_SIZE >> 1);
-	fprintf(f, "offset = %lu\n", tmessage);
+//	fprintf(f, "offset = %lu\n", tmessage);
 #endif
 
-	fprintf(f, "*%08x;\n", message);
+//	fprintf(f, "*%08x;\n", message);
 
 	if (options.raw)
 		return;
@@ -205,7 +225,9 @@ void print_message(FILE *f,
 
 	switch (type) {
 		case TYPE_ZK1:
-			fprintf(f, "  Code: %05x\n", data);
+//			fprintf(f, "  Code: %05x\n", data);
+			 fprintf(f, "K1 :%05x\n", data);
+
 			break;
 
 		case TYPE_ZK2:
@@ -219,17 +241,17 @@ void print_message(FILE *f,
 
 			altitude = data2dec(data & 0x3fff) * 10; // TODO negative altitude
 
-			fprintf(f, "  Altitude: %d m (%s)\n", altitude, (altitude_type) ? "absolute" : "relative");
-			fprintf(f, "  Fuel: %d%%\n", fuel);
+			fprintf(f, "K2 FL%5dm (%s) ", altitude, (altitude_type) ? "abs" : "rel");
+			fprintf(f, "F:%d%%\n", fuel);
 
 			break;
 
 		case TYPE_ZK3:
 			speed = data2dec(data & 0x3ff) * 10;
 			angle = data2dec((data >> 10) & 0x3ff);
-			fprintf(f, "  Speed: %d km/h\n", speed);
-			fprintf(f, "  Angle: %dÂ°\n", angle);
+			fprintf(f, "K3 Spd:%4d km/h ", speed);
+			fprintf(f, "A:%3d%c°\n", angle,248);
 			break;
 	}
-	fprintf(f, "\n");
+//	fprintf(f, "\n");
 }
